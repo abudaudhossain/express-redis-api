@@ -1,69 +1,53 @@
-require('dotenv').config();
-
-const express = require('express')
-const redis = require('./config/redis')
-const productRoutes = require("./routes/product.routes");
-
-
-const app = express()
-
-app.use((req, res,next)=>{
-    req.time = new Date();
-    next()
-})
-
-
-app.get('/health', (req, res)=>{
-    res.status(200).json({
-        status: "ok"
-    })
-})
-
-app.use("/api/products", productRoutes);
-
-app.use((err, req, res, next) => {
-  console.error("[HTTP Error]", err.message);
-
-  if (res.headersSent) {
-    return next(err);
-  }
-
-  res.status(500).json({
-    success: false,
-    message: "Internal server error",
-  });
-});
+import app from "./app.js";
+import { env } from "./config/env.js";
+import { redisClient } from "./infrastructure/redis/redis.client.js";
 
 let server;
 
 async function startServer() {
-  await redis.connect();
+  try {
+    // Connect to Redis before accepting requests.
+    await redisClient.connect();
 
-  server = app.listen(process.env.PORT || 3000, () => {
-    console.info("[Express] Server started");
-  });
+    server = app.listen(env.PORT, () => {
+      console.info(`API listening on port ${env.PORT}`);
+      console.info(`Environment: ${env.NODE_ENV}`);
+    });
+  } catch (error) {
+    console.error("Application startup failed:", error.message);
+
+    if (redisClient.isOpen) {
+      await redisClient.quit().catch(() => { });
+    }
+
+    process.exitCode = 1;
+  }
 }
 
 async function shutdown(signal) {
-  console.info(`[App] Received ${signal}; shutting down`);
+  console.info(`${signal} received. Shutting down...`);
 
   if (server) {
-    await new Promise((resolve) => server.close(resolve));
+    await new Promise((resolve) => {
+      server.close(resolve);
+    });
   }
 
-  if (redis.status === "ready") {
-    await redis.quit();
-  } else {
-    redis.disconnect();
+  if (redisClient.isOpen) {
+    await redisClient.quit().catch((error) => {
+      console.error("Redis shutdown error:", error.message);
+    });
   }
-
-  process.exit(0);
+  
+  process.exitCode = 1;
 }
 
-process.once("SIGTERM", () => shutdown("SIGTERM"));
-process.once("SIGINT", () => shutdown("SIGINT"));
-
-startServer().catch((error) => {
-  console.error("[App] Startup failed:", error.message);
-  process.exit(1);
+process.once("SIGINT", () => {
+  void shutdown("SIGINT");
 });
+
+process.once("SIGTERM", () => {
+  void shutdown("SIGTERM");
+});
+
+await startServer();
