@@ -1,43 +1,20 @@
 import { cacheConfig } from "../../config/cash.js";
 import { redisClient } from "../../infrastructure/redis/redis.client.js";
-import { productListCacheKey } from "../../utils/cache-keys.js";
+import { readProductListCache , writeProductListCache, invalidateProductListCache} from "./product-cache.service.js";
 import {
     countActiveProducts,
     findActiveProducts,
+    createProduct
 } from "./product.repository.js";
 
 
 export async function getProducts({ page, limit }) {
 
-    const cacheKey = productListCacheKey({ page, limit });
+   const cashed = await readProductListCache({ page, limit });
 
-    if (redisClient.isReady) {
-        try {
-            const cachedValue = await redisClient.get(cacheKey);
-            console.info(`Cache key: ${cacheKey}, Cached value: ${cachedValue}`);
-            if (cachedValue !== null) {
-                try {
-                    const cachedResponse = JSON.parse(cachedValue);
-
-                    if (
-                        cachedResponse &&
-                        Array.isArray(cachedResponse.data) &&
-                        cachedResponse.pagination
-                    ) {
-                        return cachedResponse;
-                    }
-
-                    // Invalid cache data: discard and fetch fresh data.
-                    await redisClient.del(cacheKey).catch(() => { });
-                } catch {
-                    await redisClient.del(cacheKey).catch(() => { });
-                }
-            }
-        } catch (error) {
-            console.error("Redis cache read failed:", error.message);
-        }
-    }
-
+   if( cashed !== null) {
+    return cashed;
+   }
     const offset = (page - 1) * limit;
 
     const [products, total] = await Promise.all([
@@ -55,15 +32,14 @@ export async function getProducts({ page, limit }) {
         },
     };
 
-    if (redisClient.isReady) {
-        try {
-            await redisClient.set(cacheKey, JSON.stringify(response), {
-                EX: cacheConfig.productListTtlSeconds,
-            });
-        } catch (error) {
-            console.error("Redis cache write failed:", error.message);
-        }
-    }
+   await writeProductListCache({ page, limit }, response);
 
     return response;
+}
+
+export async function addProduct(input){
+    const product = await createProduct(input);
+
+    await invalidateProductListCache();
+    return product;
 }

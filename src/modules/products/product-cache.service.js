@@ -1,6 +1,6 @@
-import { cacheConfig } from "../../config/cash";
-import { redisClient } from "../../infrastructure/redis/redis.client";
-import { productListCacheKey } from "../../utils/cache-keys";
+import { cacheConfig } from "../../config/cash.js";
+import { redisClient } from "../../infrastructure/redis/redis.client.js";
+import { productListCacheKey } from "../../utils/cache-keys.js";
 
 
 const INITIAL_VERSION = 1;
@@ -19,7 +19,7 @@ export async function getProductListCacheVersion() {
             "Product cache version is missing; initialize it before serving requests",
         );
     }
-
+ 
     return version;
 }
 

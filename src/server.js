@@ -1,6 +1,7 @@
 import app from "./app.js";
 import { env } from "./config/env.js";
 import { redisClient } from "./infrastructure/redis/redis.client.js";
+import { initializeProductCache } from "./modules/products/product-cache.service.js";
 
 let server;
 
@@ -8,7 +9,7 @@ async function startServer() {
   try {
     // Connect to Redis before accepting requests.
     await redisClient.connect();
-
+    await initializeProductCache();
     server = app.listen(env.PORT, () => {
       console.info(`API listening on port ${env.PORT}`);
       console.info(`Environment: ${env.NODE_ENV}`);
